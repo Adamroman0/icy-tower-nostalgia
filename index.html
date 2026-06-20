@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lava Tower — Jump Forever</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="game-wrap">
+    <canvas id="game" width="420" height="640"></canvas>
+
+    <!-- Start Menu -->
+    <div id="menu" class="overlay">
+      <h1>LAVA<span>TOWER</span></h1>
+      <p class="tagline">Climb forever. Outrun the lava.</p>
+      <button id="btn-new">New Game</button>
+      <button id="btn-leaderboard">Leaderboard</button>
+      <p class="hint">← → or A / D to move</p>
+    </div>
+
+    <!-- Leaderboard -->
+    <div id="leaderboard" class="overlay hidden">
+      <h2>Leaderboard</h2>
+      <ol id="scores"></ol>
+      <p id="no-scores" class="hint hidden">No scores yet — go climb!</p>
+      <button id="btn-back">Back</button>
+    </div>
+
+    <!-- Game Over -->
+    <div id="gameover" class="overlay hidden">
+      <h2>Game Over</h2>
+      <p class="final">Height: <span id="final-score">0</span> m</p>
+      <p id="best-tag" class="hint"></p>
+      <button id="btn-retry">Play Again</button>
+      <button id="btn-menu">Main Menu</button>
+    </div>
+  </div>
+  <script src="game.js"></script>
+</body>
+</html>

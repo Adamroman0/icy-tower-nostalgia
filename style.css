@@ -1,0 +1,270 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;800&display=swap');
+
+:root {
+  --color-bg: #090606;
+  --color-primary: #ff4e00;
+  --color-secondary: #ec9f05;
+  --color-text: #f5f5f7;
+  --color-glass: rgba(15, 10, 10, 0.75);
+  --color-border: rgba(255, 78, 0, 0.2);
+  --color-border-hover: rgba(255, 78, 0, 0.5);
+  --font-main: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --glow-shadow: 0 0 20px rgba(255, 78, 0, 0.35);
+  --glow-shadow-strong: 0 0 30px rgba(255, 78, 0, 0.6);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-main);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Background animated lava glow effect */
+body::before {
+  content: '';
+  position: absolute;
+  bottom: -10%;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: radial-gradient(circle, rgba(255, 78, 0, 0.15) 0%, rgba(236, 159, 5, 0.05) 50%, rgba(0,0,0,0) 100%);
+  filter: blur(80px);
+  z-index: -1;
+  animation: lava-flow 8s ease-in-out infinite alternate;
+}
+
+@keyframes lava-flow {
+  0% { transform: translateY(0) scale(1); }
+  100% { transform: translateY(-5%) scale(1.1); }
+}
+
+#game-wrap {
+  position: relative;
+  width: 420px;
+  height: 640px;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: var(--glow-shadow);
+  border: 1px solid var(--color-border);
+  background-color: #0b0707;
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+#game-wrap:hover {
+  box-shadow: var(--glow-shadow-strong);
+  border-color: rgba(255, 78, 0, 0.4);
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(to bottom, #0d0c1d 0%, #1a0b07 70%, #2b0700 100%);
+}
+
+/* Overlay Base Styles (Glassmorphism) */
+.overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--color-glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 30px;
+  text-align: center;
+  z-index: 10;
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              visibility 0.3s;
+}
+
+.overlay.hidden {
+  opacity: 0;
+  transform: scale(0.95);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Header Styles */
+h1 {
+  font-size: 3.5rem;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: #fff;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.1),
+               0 0 20px var(--color-primary),
+               0 0 30px var(--color-primary);
+  margin-bottom: 5px;
+  line-height: 1;
+}
+
+h1 span {
+  display: block;
+  font-size: 2.2rem;
+  color: var(--color-secondary);
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.1),
+               0 0 20px var(--color-secondary);
+}
+
+h2 {
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 0 15px var(--color-primary);
+  margin-bottom: 20px;
+  letter-spacing: 1px;
+}
+
+/* Taglines & Text */
+.tagline {
+  font-size: 1rem;
+  color: #a0a0ab;
+  margin-bottom: 40px;
+  font-weight: 400;
+}
+
+.hint {
+  font-size: 0.85rem;
+  color: #71717a;
+  margin-top: 25px;
+  letter-spacing: 0.5px;
+}
+
+.final {
+  font-size: 1.5rem;
+  color: #a0a0ab;
+  margin-bottom: 10px;
+}
+
+#final-score {
+  font-size: 2.5rem;
+  font-weight: 800;
+  color: var(--color-secondary);
+  text-shadow: 0 0 15px rgba(236, 159, 5, 0.4);
+  display: block;
+  margin-top: 5px;
+}
+
+#best-tag {
+  color: var(--color-primary);
+  font-weight: 600;
+  margin-bottom: 30px;
+  text-shadow: 0 0 10px rgba(255, 78, 0, 0.2);
+}
+
+/* Buttons */
+button {
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+  color: #fff;
+  border: none;
+  padding: 14px 28px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border-radius: 30px;
+  cursor: pointer;
+  width: 220px;
+  margin: 10px 0;
+  box-shadow: 0 4px 15px rgba(255, 78, 0, 0.3);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(255, 78, 0, 0.5), 0 0 10px rgba(255, 255, 255, 0.2);
+  filter: brightness(1.1);
+}
+
+button:active {
+  transform: translateY(1px);
+  box-shadow: 0 2px 10px rgba(255, 78, 0, 0.3);
+}
+
+/* Leaderboard List styling */
+#scores {
+  width: 100%;
+  max-height: 250px;
+  overflow-y: auto;
+  margin-bottom: 25px;
+  padding: 0 15px;
+  list-style: none;
+}
+
+/* Custom Scrollbar for scores */
+#scores::-webkit-scrollbar {
+  width: 6px;
+}
+
+#scores::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 3px;
+}
+
+#scores::-webkit-scrollbar-thumb {
+  background: var(--color-primary);
+  border-radius: 3px;
+}
+
+#scores li {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 12px 18px;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 1rem;
+  transition: background 0.2s;
+}
+
+#scores li:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 78, 0, 0.2);
+}
+
+#scores li .rank {
+  font-weight: 800;
+  color: var(--color-primary);
+  margin-right: 10px;
+  font-size: 1.1rem;
+}
+
+#scores li .score-val {
+  font-weight: 700;
+  color: var(--color-secondary);
+}
+
+#scores li .date {
+  font-size: 0.75rem;
+  color: #71717a;
+  margin-left: auto;
+  margin-right: 15px;
+}
+
+#no-scores {
+  margin-bottom: 30px;
+}
