@@ -28,6 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
     gravity: 0.35,
     jumpForce: -10.5,
     springJumpForce: -19,
+    maxFallSpeed: 14, // terminal velocity — keeps fast descents readable
     playerSpeed: 0.48, // acceleration (reduced by 20%)
     playerFriction: 0.86,
     maxPlayerVx: 6.0, // max velocity (reduced by 20%)
@@ -54,7 +55,6 @@ document.addEventListener('DOMContentLoaded', () => {
   let lavaY = 640;
   let lavaSpeed = CONFIG.baseLavaSpeed;
   let currentScore = 0; // in meters
-  let maxReachedHeight = 0; // relative to starting Y
   let keys = {};
   let animationFrameId;
   let screenShake = 0;
@@ -196,8 +196,6 @@ document.addEventListener('DOMContentLoaded', () => {
       this.color = '#ffdd00';
       this.trailColor = '#ff6c00';
       this.facing = 'right';
-      this.grounded = false;
-      this.isJumping = false;
     }
 
     update() {
@@ -216,19 +214,23 @@ document.addEventListener('DOMContentLoaded', () => {
       if (this.vx > CONFIG.maxPlayerVx) this.vx = CONFIG.maxPlayerVx;
       if (this.vx < -CONFIG.maxPlayerVx) this.vx = -CONFIG.maxPlayerVx;
 
-      // Screen boundary wrap around
-      if (this.x + this.width < 0) {
-        this.x = canvas.width;
-      } else if (this.x > canvas.width) {
-        this.x = -this.width;
-      }
-
       // Apply gravity
       this.vy += CONFIG.gravity;
+      if (this.vy > CONFIG.maxFallSpeed) this.vy = CONFIG.maxFallSpeed;
 
       // Move player
       this.x += this.vx;
       this.y += this.vy;
+
+      // Solid side walls — block the player and bounce off (Icy Tower style)
+      const wallBounce = 0.55;
+      if (this.x < 0) {
+        this.x = 0;
+        this.vx = Math.abs(this.vx) * wallBounce;
+      } else if (this.x + this.width > canvas.width) {
+        this.x = canvas.width - this.width;
+        this.vx = -Math.abs(this.vx) * wallBounce;
+      }
 
       // Spawn trail particles when moving up rapidly
       if (this.vy < -2 && Math.random() < 0.4) {
@@ -246,44 +248,107 @@ document.addEventListener('DOMContentLoaded', () => {
 
     draw(ctx, camY) {
       ctx.save();
-      // Draw character box with glow
-      ctx.shadowBlur = 10;
-      ctx.shadowColor = this.color;
-      ctx.fillStyle = this.color;
-      
+
       const rx = this.x;
       const ry = this.y - camY;
-      const rw = this.width;
-      const rh = this.height;
-      const radius = 6; // rounded corners
-      
-      // Draw a cute rounded cube
+      const rw = this.width;   // 24
+      const rh = this.height;  // 24
+      const dir = this.facing === 'right' ? 1 : -1;
+
+      // Squash/stretch based on vertical velocity for juicy feel
+      const stretch = Math.max(-0.18, Math.min(0.18, this.vy * 0.012));
+      const cx = rx + rw / 2; // horizontal center
+      ctx.translate(cx, ry);
+      ctx.scale(1 - stretch, 1 + stretch);
+      ctx.translate(-cx, -ry);
+
+      // ---- Color palette (Icy-Tower-inspired "homeboy") ----
+      const skin = '#f3c08b';
+      const skinShade = '#d99f68';
+      const hoodie = '#e8542e';   // baggy orange hoodie
+      const hoodieShade = '#b53a1c';
+      const pants = '#2e3a59';    // baggy denim jeans
+      const pantsShade = '#1f2742';
+      const beanie = '#1e6fd0';   // blue beanie
+      const beanieCuff = '#1456a8';
+      const shoe = '#f5f5f5';
+
+      // ---------- LEGS (baggy jeans) ----------
+      ctx.fillStyle = pants;
+      // left leg
+      ctx.fillRect(rx + 3, ry + 17, 7, 6);
+      // right leg
+      ctx.fillRect(rx + 14, ry + 17, 7, 6);
+      // inner shadow between legs
+      ctx.fillStyle = pantsShade;
+      ctx.fillRect(rx + 10, ry + 17, 4, 5);
+      // shoes (oversized sneakers)
+      ctx.fillStyle = shoe;
+      ctx.fillRect(rx + 2, ry + 22, 9, 2);
+      ctx.fillRect(rx + 13, ry + 22, 9, 2);
+
+      // ---------- TORSO (baggy hoodie) ----------
+      // wide, slightly trapezoidal body for the baggy look
+      ctx.fillStyle = hoodie;
       ctx.beginPath();
-      ctx.moveTo(rx + radius, ry);
-      ctx.lineTo(rx + rw - radius, ry);
-      ctx.quadraticCurveTo(rx + rw, ry, rx + rw, ry + radius);
-      ctx.lineTo(rx + rw, ry + rh - radius);
-      ctx.quadraticCurveTo(rx + rw, ry + rh, rx + rw - radius, ry + rh);
-      ctx.lineTo(rx + radius, ry + rh);
-      ctx.quadraticCurveTo(rx, ry + rh, rx, ry + rh - radius);
-      ctx.lineTo(rx, ry + radius);
-      ctx.quadraticCurveTo(rx, ry, rx + radius, ry);
+      ctx.moveTo(rx + 1, ry + 18);     // bottom-left, hem flares out
+      ctx.lineTo(rx + 4, ry + 9);      // shoulder-left
+      ctx.lineTo(rx + rw - 4, ry + 9); // shoulder-right
+      ctx.lineTo(rx + rw - 1, ry + 18);// bottom-right
       ctx.closePath();
       ctx.fill();
+      // hoodie pocket / shading
+      ctx.fillStyle = hoodieShade;
+      ctx.fillRect(rx + 7, ry + 14, 10, 3);
+      // baggy sleeves hanging at sides
+      ctx.fillStyle = hoodie;
+      ctx.fillRect(rx, ry + 10, 4, 7);
+      ctx.fillRect(rx + rw - 4, ry + 10, 4, 7);
+      ctx.fillStyle = skin; // hands poking out of sleeves
+      ctx.fillRect(rx, ry + 16, 4, 2);
+      ctx.fillRect(rx + rw - 4, ry + 16, 4, 2);
 
-      // Eye visor design (cyberpunk look)
-      ctx.fillStyle = '#0f0f18';
-      const visorY = ry + 5;
-      const visorHeight = 6;
-      if (this.facing === 'right') {
-        ctx.fillRect(rx + 8, visorY, rw - 8, visorHeight);
-        ctx.fillStyle = '#00ffff'; // glowing eye
-        ctx.fillRect(rx + 16, visorY + 2, 4, 2);
+      // ---------- HEAD ----------
+      ctx.fillStyle = skin;
+      ctx.fillRect(rx + 6, ry + 4, 12, 8);
+      // jaw/cheek shading on the back side
+      ctx.fillStyle = skinShade;
+      if (dir === 1) ctx.fillRect(rx + 6, ry + 4, 2, 8);
+      else ctx.fillRect(rx + 16, ry + 4, 2, 8);
+
+      // face: eyes (look toward facing direction)
+      ctx.fillStyle = '#1a1a22';
+      const eyeY = ry + 7;
+      if (dir === 1) {
+        ctx.fillRect(rx + 13, eyeY, 2, 2);
+        ctx.fillRect(rx + 16, eyeY, 2, 2);
       } else {
-        ctx.fillRect(rx, visorY, rw - 8, visorHeight);
-        ctx.fillStyle = '#00ffff'; // glowing eye
-        ctx.fillRect(rx + 4, visorY + 2, 4, 2);
+        ctx.fillRect(rx + 6, eyeY, 2, 2);
+        ctx.fillRect(rx + 9, eyeY, 2, 2);
       }
+      // little grin
+      ctx.fillStyle = skinShade;
+      if (dir === 1) ctx.fillRect(rx + 14, ry + 10, 3, 1);
+      else ctx.fillRect(rx + 7, ry + 10, 3, 1);
+
+      // ---------- BLUE BEANIE ----------
+      // rounded dome cap
+      ctx.fillStyle = beanie;
+      ctx.beginPath();
+      ctx.moveTo(rx + 5, ry + 5);
+      ctx.quadraticCurveTo(rx + rw / 2, ry - 4, rx + rw - 5, ry + 5);
+      ctx.lineTo(rx + rw - 5, ry + 5);
+      ctx.lineTo(rx + 5, ry + 5);
+      ctx.closePath();
+      ctx.fill();
+      // folded cuff/brim
+      ctx.fillStyle = beanieCuff;
+      ctx.fillRect(rx + 4, ry + 4, rw - 8, 3);
+      // little pom-pom on top
+      ctx.fillStyle = '#dbe9ff';
+      ctx.beginPath();
+      ctx.arc(rx + rw / 2, ry - 2, 2, 0, Math.PI * 2);
+      ctx.fill();
 
       ctx.restore();
     }
@@ -571,13 +636,15 @@ document.addEventListener('DOMContentLoaded', () => {
       // Basic platforms
       if (roll < 0.15) type = 'moving';
     } else if (heightProgress < 0.5) {
-      // Mix in some spring platforms
+      // Mix in spring and a few crumbling platforms
       if (roll < 0.2) type = 'moving';
-      else if (roll < 0.35) type = 'spring';
+      else if (roll < 0.33) type = 'spring';
+      else if (roll < 0.43) type = 'fragile';
     } else {
-      // Advanced levels (fewer normal platforms)
-      if (roll < 0.35) type = 'moving';
-      else if (roll < 0.55) type = 'spring';
+      // Advanced levels (fewer normal platforms, more hazards)
+      if (roll < 0.32) type = 'moving';
+      else if (roll < 0.5) type = 'spring';
+      else if (roll < 0.68) type = 'fragile';
     }
 
     platforms.push(new Platform(x, y, type));
@@ -814,14 +881,16 @@ document.addEventListener('DOMContentLoaded', () => {
       cameraY += (targetCameraY - cameraY) * 0.12;
 
       // Handle Lava rising
-      // Make lava speed up slightly as the player climbs higher
+      // Lava creeps faster the longer the run lasts...
+      lavaSpeed = Math.min(lavaSpeed + CONFIG.lavaAcceleration, CONFIG.maxLavaSpeed);
+      // ...and faster the higher the player climbs.
       const difficultyMultiplier = 1 + (Math.abs(player.y) / CONFIG.maxDifficultyHeight) * 0.7;
       const currentFrameLavaSpeed = Math.min(lavaSpeed * difficultyMultiplier, CONFIG.maxLavaSpeed);
       
       lavaY -= currentFrameLavaSpeed;
 
       // Make sure the lava doesn't fall too far behind the viewport bottom to keep urgency
-      const maxLavaDistanceBelowViewport = 80;
+      const maxLavaDistanceBelowViewport = 120;
       const viewportBottom = cameraY + canvas.height;
       if (lavaY > viewportBottom + maxLavaDistanceBelowViewport) {
         lavaY = viewportBottom + maxLavaDistanceBelowViewport;
@@ -841,41 +910,51 @@ document.addEventListener('DOMContentLoaded', () => {
       
       // Check collision with platform landing from above
       if (player.vy > 0) { // only land when falling
-        platforms.forEach(plat => {
-          // AABB collision logic for landing
+        for (const plat of platforms) {
+          // Already-crumbling platforms are no longer solid
+          if (plat.broken) continue;
+
+          // AABB collision logic for landing (swept against the platform top)
           if (
             player.x + player.width > plat.x &&
             player.x < plat.x + plat.width &&
             player.y + player.height >= plat.y &&
             player.y + player.height - player.vy <= plat.y + 12
           ) {
-            // Spring collision
+            // Did the player come down on the spring's narrow pad?
+            let hitSpring = false;
             if (plat.hasSpring) {
               const sx = plat.springX;
               const sy = plat.springY;
-              
-              if (
+              hitSpring =
                 player.x + player.width > sx &&
                 player.x < sx + CONFIG.springWidth &&
                 player.y + player.height >= sy &&
-                player.y + player.height - player.vy <= sy + CONFIG.springHeight
-              ) {
-                // Spring activated jump
-                player.vy = CONFIG.springJumpForce;
-                plat.springActivated = true;
-                plat.springFrame = 0;
-                screenShake = 8;
-                sound.play('spring');
-                spawnExplosion(sx + CONFIG.springWidth / 2, sy, '#ff3366', 15, 4);
-              }
+                player.y + player.height - player.vy <= sy + CONFIG.springHeight;
+            }
+
+            if (hitSpring) {
+              // Spring-activated super jump
+              const sx = plat.springX;
+              const sy = plat.springY;
+              player.vy = CONFIG.springJumpForce;
+              plat.springActivated = true;
+              plat.springFrame = 0;
+              screenShake = 8;
+              sound.play('spring');
+              spawnExplosion(sx + CONFIG.springWidth / 2, sy, '#ff3366', 15, 4);
             } else {
-              // Normal landing / jumping
+              // Normal bounce off the platform body
               player.vy = CONFIG.jumpForce;
               sound.play('jump');
               spawnExplosion(player.x + player.width / 2, player.y + player.height, '#00b4db', 6, 1.5);
+              // Fragile platforms start crumbling after one bounce
+              if (plat.type === 'fragile') plat.broken = true;
             }
+
+            break; // one landing per frame
           }
-        });
+        }
       }
 
       // Check gameover collision (Lava touch or falling way below camera)
