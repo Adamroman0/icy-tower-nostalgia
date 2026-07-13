@@ -29,7 +29,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const movementZone = document.getElementById('movement-zone');
   const thumbpad = document.getElementById('thumbpad');
   const thumbstick = document.getElementById('thumbstick');
-  const jumpButton = document.getElementById('jump-button');
+  const jumpZone = document.getElementById('jump-zone');
   const pauseOverlay = document.getElementById('pause');
   const pauseButton = document.getElementById('btn-pause');
   const resumeButton = document.getElementById('btn-resume');
@@ -638,8 +638,8 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function getMoveDirection() {
-    const keyboardLeft = keys['ArrowLeft'] || keys['KeyA'];
-    const keyboardRight = keys['ArrowRight'] || keys['KeyD'];
+    const keyboardLeft = keys['ArrowLeft'];
+    const keyboardRight = keys['ArrowRight'];
 
     if (keyboardLeft && !keyboardRight) return -1;
     if (keyboardRight && !keyboardLeft) return 1;
@@ -738,7 +738,7 @@ document.addEventListener('DOMContentLoaded', () => {
     resetThumbpad();
   });
 
-  jumpButton.addEventListener('pointerdown', (e) => {
+  jumpZone.addEventListener('pointerdown', (e) => {
     e.preventDefault();
     queueJump();
   });
@@ -765,7 +765,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const wasDown = keys[e.code];
     keys[e.code] = true;
 
-    if (!wasDown && ['Space', 'ArrowUp', 'KeyW'].includes(e.code)) {
+    if (!wasDown && e.code === 'Space') {
       queueJump();
     }
 
@@ -774,7 +774,7 @@ document.addEventListener('DOMContentLoaded', () => {
       else if (gameState === 'paused') resumeGame();
     }
 
-    if (['ArrowLeft', 'ArrowRight', 'KeyA', 'KeyD'].includes(e.code)) {
+    if (['ArrowLeft', 'ArrowRight'].includes(e.code)) {
       touchInput.graceDirection = 0;
       touchInput.graceFrames = 0;
     }

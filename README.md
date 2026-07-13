@@ -4,7 +4,7 @@ An endless vertical platform game built with HTML Canvas and vanilla JavaScript.
 
 ## Play
 
-Run `./run.sh` and open the displayed local URL. Use Arrow keys or A/D to move and Space, W, or Up Arrow to jump. Build horizontal speed before jumping to launch higher; land higher from consecutive momentum jumps to grow a combo.
+Run `./run.sh` and open the displayed local URL. On desktop, use Arrow keys to move and Space to jump. On mobile, drag the left side to move and tap anywhere on the right side to jump. Build horizontal speed before jumping to launch higher; land higher from consecutive momentum jumps to grow a combo.
 
 Escape pauses the game. Touch controls appear by default on coarse-pointer devices and can be toggled during a run. Sound preference and local top-five scores are saved in the browser.
 

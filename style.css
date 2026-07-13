@@ -376,7 +376,7 @@ button:focus-visible {
 }
 
 .movement-zone,
-.jump-button {
+.jump-zone {
   pointer-events: auto;
   -webkit-user-select: none;
   user-select: none;
@@ -386,6 +386,13 @@ button:focus-visible {
   position: absolute;
   inset: 0 42% 0 0;
   touch-action: none;
+}
+
+.jump-zone {
+  position: absolute;
+  inset: 0 0 0 58%;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 .thumbpad {
@@ -442,26 +449,6 @@ button:focus-visible {
   transition: transform 0.08s ease-out;
 }
 
-.jump-button {
-  position: absolute;
-  right: 18px;
-  bottom: 18px;
-  width: clamp(82px, 23cqmin, 106px);
-  aspect-ratio: 1;
-  margin: 0;
-  padding: 0;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.24);
-  background: radial-gradient(circle at 35% 30%, rgba(255, 196, 107, 0.58), rgba(255, 78, 0, 0.28));
-  box-shadow: 0 0 18px rgba(255, 78, 0, 0.22);
-  color: rgba(255, 255, 255, 0.88);
-  font-size: clamp(0.82rem, 3.7cqmin, 1rem);
-  font-weight: 800;
-  letter-spacing: 0;
-  opacity: 0.62;
-}
-
-.jump-button:active,
 .thumbpad.active {
   opacity: 0.9;
   filter: brightness(1.1);
