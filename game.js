@@ -85,6 +85,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let combo = 0;
   let bestCombo = 0;
   let comboMessageTime = 0;
+  let firstClimbPlatform = null;
+  let lavaActive = false;
   let lastTimestamp = 0;
   let accumulator = 0;
   const FIXED_STEP_MS = 1000 / 60;
@@ -833,15 +835,19 @@ document.addEventListener('DOMContentLoaded', () => {
   function generateInitialPlatforms() {
     platforms = [];
     
-    // Solid base platform to start
-    const basePlatform = new Platform(VIEW_WIDTH / 2 - CONFIG.platformWidth / 2, VIEW_HEIGHT - 50, 'normal');
+    // Full-width base gives the player a reliable runway before the climb starts.
+    const basePlatform = new Platform(0, VIEW_HEIGHT - 50, 'normal');
+    basePlatform.width = VIEW_WIDTH;
+    basePlatform.isBase = true;
     platforms.push(basePlatform);
     
     // Generate up the tower
     let currentY = VIEW_HEIGHT - 120;
-    let previous = basePlatform;
+    let previous = { x: VIEW_WIDTH / 2 - CONFIG.platformWidth / 2, y: basePlatform.y };
+    firstClimbPlatform = null;
     while (currentY > -1000) {
       previous = spawnPlatformAtY(currentY, previous);
+      if (!firstClimbPlatform) firstClimbPlatform = previous;
       currentY -= getRandomGap(currentY);
     }
   }
@@ -1080,8 +1086,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function registerLanding(platformY) {
-    const climbed = player.jumpStartY - (platformY - player.height);
+  function registerLanding(platform) {
+    if (!lavaActive && platform === firstClimbPlatform) {
+      lavaActive = true;
+      gameStatus.textContent = 'Lava is rising';
+    }
+
+    const climbed = player.jumpStartY - (platform.y - player.height);
     if (player.momentumJump && climbed >= 75) {
       combo++;
       bestCombo = Math.max(bestCombo, combo);
@@ -1110,11 +1121,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (comboMessageTime > 0) comboMessageTime--;
     cameraY += (targetCameraY - cameraY) * 0.12;
 
-    lavaSpeed = Math.min(lavaSpeed + CONFIG.lavaAcceleration, CONFIG.maxLavaSpeed);
-    const difficultyMultiplier = 1 + (Math.abs(player.y) / CONFIG.maxDifficultyHeight) * 0.7;
-    lavaY -= Math.min(lavaSpeed * difficultyMultiplier, CONFIG.maxLavaSpeed);
-    const viewportBottom = cameraY + VIEW_HEIGHT;
-    lavaY = Math.min(lavaY, viewportBottom + 120);
+    if (lavaActive) {
+      lavaSpeed = Math.min(lavaSpeed + CONFIG.lavaAcceleration, CONFIG.maxLavaSpeed);
+      const difficultyMultiplier = 1 + (Math.abs(player.y) / CONFIG.maxDifficultyHeight) * 0.7;
+      lavaY -= Math.min(lavaSpeed * difficultyMultiplier, CONFIG.maxLavaSpeed);
+      const viewportBottom = cameraY + VIEW_HEIGHT;
+      lavaY = Math.min(lavaY, viewportBottom + 120);
+    }
 
     currentScore = Math.max(currentScore, Math.floor(Math.max(0, (VIEW_HEIGHT - 100) - player.y) / 10));
     maintainPlatforms();
@@ -1132,7 +1145,7 @@ document.addEventListener('DOMContentLoaded', () => {
           player.x < plat.springX + CONFIG.springWidth &&
           player.y + player.height - player.vy <= plat.springY + CONFIG.springHeight;
         player.y = plat.y - player.height;
-        registerLanding(plat.y);
+        registerLanding(plat);
 
         if (hitSpring) {
           plat.springActivated = true;
@@ -1155,11 +1168,11 @@ document.addEventListener('DOMContentLoaded', () => {
       particle.update();
       return particle.life > 0;
     });
-    if (Math.random() < 0.2) {
+    if (lavaActive && Math.random() < 0.2) {
       particles.push(new Particle(Math.random() * VIEW_WIDTH, lavaY - Math.random() * 10, '#ffaa00', Math.random() * 3 + 1, (Math.random() - 0.5) * 1.5, -Math.random() * 2 - 0.5, Math.random() * 40 + 20));
     }
 
-    if (player.y + player.height >= lavaY || player.y - cameraY > VIEW_HEIGHT + 100) gameOver();
+    if ((lavaActive && player.y + player.height >= lavaY) || player.y - cameraY > VIEW_HEIGHT + 100) gameOver();
   }
 
   function renderGame() {
@@ -1296,6 +1309,7 @@ document.addEventListener('DOMContentLoaded', () => {
     combo = 0;
     bestCombo = 0;
     comboMessageTime = 0;
+    lavaActive = false;
     cameraY = 0;
     targetCameraY = 0;
     lavaY = VIEW_HEIGHT + 150;
