@@ -6,6 +6,8 @@
 document.addEventListener('DOMContentLoaded', () => {
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
+  const VIEW_WIDTH = 420;
+  const VIEW_HEIGHT = 640;
 
   // DOM Elements
   const menuOverlay = document.getElementById('menu');
@@ -16,12 +18,24 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnLeaderboard = document.getElementById('btn-leaderboard');
   const btnBack = document.getElementById('btn-back');
   const btnRetry = document.getElementById('btn-retry');
-  const btnMenuElements = document.querySelectorAll('#btn-menu');
+  const menuButton = document.getElementById('btn-menu');
   
   const finalScoreSpan = document.getElementById('final-score');
   const bestTag = document.getElementById('best-tag');
   const scoresOl = document.getElementById('scores');
   const noScoresP = document.getElementById('no-scores');
+  const controlsToggleButton = document.getElementById('btn-controls-toggle');
+  const touchControls = document.getElementById('touch-controls');
+  const movementZone = document.getElementById('movement-zone');
+  const thumbpad = document.getElementById('thumbpad');
+  const thumbstick = document.getElementById('thumbstick');
+  const jumpButton = document.getElementById('jump-button');
+  const pauseOverlay = document.getElementById('pause');
+  const pauseButton = document.getElementById('btn-pause');
+  const resumeButton = document.getElementById('btn-resume');
+  const pauseMenuButton = document.getElementById('btn-pause-menu');
+  const muteButton = document.getElementById('btn-mute');
+  const gameStatus = document.getElementById('game-status');
 
   // Game Settings & Constants
   const CONFIG = {
@@ -29,15 +43,21 @@ document.addEventListener('DOMContentLoaded', () => {
     jumpForce: -10.5,
     springJumpForce: -19,
     maxFallSpeed: 14, // terminal velocity — keeps fast descents readable
-    playerSpeed: 0.48, // acceleration (reduced by 20%)
-    playerFriction: 0.86,
-    maxPlayerVx: 6.0, // max velocity (reduced by 20%)
-    platformWidth: 70,
+    groundAcceleration: 0.62,
+    airAcceleration: 0.34,
+    groundFriction: 0.82,
+    airFriction: 0.992,
+    maxPlayerVx: 7.2,
+    momentumThreshold: 4.2,
+    momentumJumpForce: -15.5,
+    inputGraceFrames: 8,
+    jumpBufferFrames: 8,
+    platformWidth: 120,
     platformHeight: 12,
     springWidth: 20,
     springHeight: 8,
     minPlatformGap: 60,
-    maxPlatformGap: 160,
+    maxPlatformGap: 132,
     maxDifficultyHeight: 8000,
     baseLavaSpeed: 0.7,
     maxLavaSpeed: 4.8,
@@ -59,16 +79,32 @@ document.addEventListener('DOMContentLoaded', () => {
   let animationFrameId;
   let screenShake = 0;
   let gameTime = 0;
+  let jumpBufferFrames = 0;
+  let thumbPointerId = null;
+  let thumbOriginX = 0;
+  let combo = 0;
+  let bestCombo = 0;
+  let comboMessageTime = 0;
+  let lastTimestamp = 0;
+  let accumulator = 0;
+  const FIXED_STEP_MS = 1000 / 60;
+  const savedTouchPreference = localStorage.getItem('lava_tower_touch_controls');
+  let touchControlsEnabled = savedTouchPreference
+    ? savedTouchPreference === 'on'
+    : window.matchMedia('(pointer: coarse)').matches;
+  let muted = localStorage.getItem('lava_tower_muted') === 'on';
 
   // Sound effects generator (Web Audio API)
   const sound = {
     ctx: null,
     init() {
-      if (!this.ctx) {
-        this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!this.ctx && AudioContextClass) {
+        this.ctx = new AudioContextClass();
       }
     },
     play(type) {
+      if (muted) return;
       this.init();
       if (!this.ctx) return;
       
@@ -142,6 +178,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  function resizeCanvas() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = VIEW_WIDTH * dpr;
+    canvas.height = VIEW_HEIGHT * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
   // Particles class for explosion/trail effects
   class Particle {
     constructor(x, y, color, size, vx, vy, life) {
@@ -187,8 +230,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Player Character Class
   class Player {
     constructor() {
-      this.x = canvas.width / 2;
-      this.y = canvas.height - 100;
+      this.x = VIEW_WIDTH / 2;
+      this.y = VIEW_HEIGHT - 100;
       this.vx = 0;
       this.vy = 0;
       this.width = 24;
@@ -196,18 +239,27 @@ document.addEventListener('DOMContentLoaded', () => {
       this.color = '#ffdd00';
       this.trailColor = '#ff6c00';
       this.facing = 'right';
+      this.grounded = false;
+      this.jumpStartY = this.y;
+      this.momentumJump = false;
+      this.jumpAnimation = 'none';
+      this.jumpRotation = 0;
     }
 
     update() {
+      this.tryBufferedJump();
+
       // Horizontal controls
-      if (keys['ArrowLeft'] || keys['KeyA'] || touchInput.left) {
-        this.vx -= CONFIG.playerSpeed;
+      const moveDirection = getMoveDirection();
+      const acceleration = this.grounded ? CONFIG.groundAcceleration : CONFIG.airAcceleration;
+      if (moveDirection < 0) {
+        this.vx -= acceleration;
         this.facing = 'left';
-      } else if (keys['ArrowRight'] || keys['KeyD'] || touchInput.right) {
-        this.vx += CONFIG.playerSpeed;
+      } else if (moveDirection > 0) {
+        this.vx += acceleration;
         this.facing = 'right';
       } else {
-        this.vx *= CONFIG.playerFriction;
+        this.vx *= this.grounded ? CONFIG.groundFriction : CONFIG.airFriction;
       }
 
       // Clamp horizontal speed
@@ -227,8 +279,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (this.x < 0) {
         this.x = 0;
         this.vx = Math.abs(this.vx) * wallBounce;
-      } else if (this.x + this.width > canvas.width) {
-        this.x = canvas.width - this.width;
+      } else if (this.x + this.width > VIEW_WIDTH) {
+        this.x = VIEW_WIDTH - this.width;
         this.vx = -Math.abs(this.vx) * wallBounce;
       }
 
@@ -246,6 +298,43 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
+    jump(force) {
+      const momentum = TowerCore.getMomentumJump(
+        this.vx,
+        CONFIG.jumpForce,
+        CONFIG.momentumJumpForce,
+        CONFIG.momentumThreshold,
+        CONFIG.maxPlayerVx
+      );
+      const isSpring = force === CONFIG.springJumpForce;
+      this.vy = force ?? momentum.force;
+      this.grounded = false;
+      this.jumpStartY = this.y;
+      this.momentumJump = !isSpring && momentum.isHighJump;
+      this.jumpAnimation = isSpring || !momentum.isHighJump
+        ? 'none'
+        : (momentum.power >= 0.78 ? 'cartwheel' : 'stretch');
+      this.jumpRotation = 0;
+      jumpBufferFrames = 0;
+      sound.play(isSpring ? 'spring' : 'jump');
+      spawnExplosion(
+        this.x + this.width / 2,
+        this.y + this.height,
+        isSpring ? '#ff3366' : (this.momentumJump ? '#ffd700' : '#00b4db'),
+        isSpring ? 15 : (this.momentumJump ? 10 : 6),
+        isSpring ? 4 : (this.momentumJump ? 2.5 : 1.5)
+      );
+    }
+
+    tryBufferedJump() {
+      if (this.grounded && jumpBufferFrames > 0) {
+        this.jump();
+        return true;
+      }
+
+      return false;
+    }
+
     draw(ctx, camY) {
       ctx.save();
 
@@ -258,9 +347,19 @@ document.addEventListener('DOMContentLoaded', () => {
       // Squash/stretch based on vertical velocity for juicy feel
       const stretch = Math.max(-0.18, Math.min(0.18, this.vy * 0.012));
       const cx = rx + rw / 2; // horizontal center
-      ctx.translate(cx, ry);
-      ctx.scale(1 - stretch, 1 + stretch);
-      ctx.translate(-cx, -ry);
+      const cy = ry + rh / 2;
+      let animationStretch = 0;
+      if (!this.grounded && this.jumpAnimation === 'stretch') {
+        animationStretch = Math.max(0, Math.min(0.24, -this.vy * 0.018));
+      }
+      if (!this.grounded && this.jumpAnimation === 'cartwheel') {
+        const jumpProgress = TowerCore.clamp((CONFIG.momentumJumpForce - this.vy) / (CONFIG.momentumJumpForce * 2), 0, 1);
+        this.jumpRotation = jumpProgress * Math.PI * 2 * (this.vx >= 0 ? 1 : -1);
+      }
+      ctx.translate(cx, cy);
+      ctx.rotate(this.jumpRotation);
+      ctx.scale(1 - stretch - animationStretch * 0.35, 1 + stretch + animationStretch);
+      ctx.translate(-cx, -cy);
 
       // ---- Color palette (Icy-Tower-inspired "homeboy") ----
       const skin = '#f3c08b';
@@ -380,7 +479,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Handle moving platforms
       if (this.type === 'moving') {
         this.x += this.vx;
-        if (this.x <= 0 || this.x + this.width >= canvas.width) {
+        if (this.x <= 0 || this.x + this.width >= VIEW_WIDTH) {
           this.vx *= -1; // Bounce off screen bounds
         }
         if (this.hasSpring) {
@@ -522,41 +621,161 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Touch/Mouse Controls for causal mobile gameplay
-  const touchInput = { left: false, right: false };
-  
-  function handlePointerDown(e) {
-    if (gameState !== 'playing') return;
-    const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-    if (clientX === undefined) return;
+  // Touch/Mouse Controls for casual mobile gameplay
+  const touchInput = {
+    left: false,
+    right: false,
+    graceDirection: 0,
+    graceFrames: 0
+  };
 
-    const rect = canvas.getBoundingClientRect();
-    const clickX = clientX - rect.left;
-    if (clickX < rect.width / 2) {
-      touchInput.left = true;
-      touchInput.right = false;
-    } else {
-      touchInput.right = true;
-      touchInput.left = false;
+  function queueJump() {
+    if (gameState === 'playing') {
+      jumpBufferFrames = CONFIG.jumpBufferFrames;
     }
   }
 
+  function getMoveDirection() {
+    const keyboardLeft = keys['ArrowLeft'] || keys['KeyA'];
+    const keyboardRight = keys['ArrowRight'] || keys['KeyD'];
+
+    if (keyboardLeft && !keyboardRight) return -1;
+    if (keyboardRight && !keyboardLeft) return 1;
+    if (touchInput.left) return -1;
+    if (touchInput.right) return 1;
+
+    if (touchInput.graceFrames > 0) {
+      touchInput.graceFrames--;
+      return touchInput.graceDirection;
+    }
+
+    touchInput.graceDirection = 0;
+    return 0;
+  }
+
+  function setTouchDirection(direction) {
+    touchInput.left = direction < 0;
+    touchInput.right = direction > 0;
+    touchInput.graceDirection = 0;
+    touchInput.graceFrames = 0;
+  }
+
   function handlePointerUp() {
+    if (touchInput.left || touchInput.right) {
+      touchInput.graceDirection = touchInput.left ? -1 : 1;
+      touchInput.graceFrames = CONFIG.inputGraceFrames;
+    }
     touchInput.left = false;
     touchInput.right = false;
   }
 
-  canvas.addEventListener('mousedown', handlePointerDown);
-  window.addEventListener('mouseup', handlePointerUp);
-  canvas.addEventListener('touchstart', (e) => {
+  function resetThumbpad() {
+    thumbPointerId = null;
+    thumbOriginX = 0;
+    thumbpad.classList.remove('active');
+    thumbpad.classList.remove('tracking');
+    thumbstick.style.setProperty('--stick-x', '0px');
+    handlePointerUp();
+  }
+
+  function updateThumbpad(e) {
+    if (gameState !== 'playing' || !touchControlsEnabled) return;
+
+    const rect = thumbpad.getBoundingClientRect();
+    const maxTravel = rect.width * 0.28;
+    const raw = Math.max(-maxTravel, Math.min(maxTravel, e.clientX - thumbOriginX));
+    const normalized = raw / maxTravel;
+    const direction = Math.abs(normalized) < 0.22 ? 0 : Math.sign(normalized);
+
+    setTouchDirection(direction);
+    thumbstick.style.setProperty('--stick-x', `${raw}px`);
+    thumbpad.classList.toggle('active', direction !== 0);
+  }
+
+  function refreshTouchControlsUI() {
+    const isPlaying = gameState === 'playing';
+    const shouldShowControls = isPlaying && touchControlsEnabled;
+
+    touchControls.classList.toggle('hidden', !shouldShowControls);
+    touchControls.setAttribute('aria-hidden', String(!shouldShowControls));
+    controlsToggleButton.classList.toggle('hidden', !isPlaying);
+    controlsToggleButton.textContent = touchControlsEnabled ? 'Controls On' : 'Controls Off';
+    controlsToggleButton.setAttribute('aria-pressed', String(touchControlsEnabled));
+
+    if (!shouldShowControls) {
+      resetThumbpad();
+    }
+  }
+
+  movementZone.addEventListener('pointerdown', (e) => {
     e.preventDefault();
-    handlePointerDown(e);
-  }, { passive: false });
-  window.addEventListener('touchend', handlePointerUp);
+    thumbPointerId = e.pointerId;
+    thumbOriginX = e.clientX;
+    const zoneRect = movementZone.getBoundingClientRect();
+    thumbpad.style.setProperty('--pad-x', `${e.clientX - zoneRect.left}px`);
+    thumbpad.style.setProperty('--pad-y', `${e.clientY - zoneRect.top}px`);
+    thumbpad.classList.add('tracking');
+    movementZone.setPointerCapture(e.pointerId);
+    updateThumbpad(e);
+  });
+
+  movementZone.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== thumbPointerId) return;
+    e.preventDefault();
+    updateThumbpad(e);
+  });
+
+  movementZone.addEventListener('pointerup', (e) => {
+    if (e.pointerId !== thumbPointerId) return;
+    e.preventDefault();
+    resetThumbpad();
+  });
+
+  movementZone.addEventListener('pointercancel', (e) => {
+    if (e.pointerId !== thumbPointerId) return;
+    resetThumbpad();
+  });
+
+  jumpButton.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    queueJump();
+  });
+
+  controlsToggleButton.addEventListener('click', () => {
+    touchControlsEnabled = !touchControlsEnabled;
+    localStorage.setItem('lava_tower_touch_controls', touchControlsEnabled ? 'on' : 'off');
+    refreshTouchControlsUI();
+  });
+
+  function refreshSoundUI() {
+    muteButton.textContent = muted ? 'Sound Off' : 'Sound On';
+    muteButton.setAttribute('aria-pressed', String(muted));
+  }
+
+  muteButton.addEventListener('click', () => {
+    muted = !muted;
+    localStorage.setItem('lava_tower_muted', muted ? 'on' : 'off');
+    refreshSoundUI();
+  });
 
   // Keyboard Event Listeners
   window.addEventListener('keydown', (e) => {
+    const wasDown = keys[e.code];
     keys[e.code] = true;
+
+    if (!wasDown && ['Space', 'ArrowUp', 'KeyW'].includes(e.code)) {
+      queueJump();
+    }
+
+    if (!wasDown && e.code === 'Escape') {
+      if (gameState === 'playing') pauseGame();
+      else if (gameState === 'paused') resumeGame();
+    }
+
+    if (['ArrowLeft', 'ArrowRight', 'KeyA', 'KeyD'].includes(e.code)) {
+      touchInput.graceDirection = 0;
+      touchInput.graceFrames = 0;
+    }
     
     // Prevent scrolling with arrows/space keys when in game
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) {
@@ -568,13 +787,25 @@ document.addEventListener('DOMContentLoaded', () => {
     keys[e.code] = false;
   });
 
+  function resetInput() {
+    keys = {};
+    jumpBufferFrames = 0;
+    resetThumbpad();
+  }
+
+  window.addEventListener('blur', resetInput);
+  document.addEventListener('visibilitychange', () => {
+    resetInput();
+    if (document.hidden && gameState === 'playing') pauseGame();
+  });
+
   // Load Starfield Parallax Particles
   function initStars() {
     stars = [];
     for (let i = 0; i < 40; i++) {
       stars.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
+        x: Math.random() * VIEW_WIDTH,
+        y: Math.random() * VIEW_HEIGHT,
         size: Math.random() * 1.5 + 0.5,
         parallax: Math.random() * 0.4 + 0.1, // Slower scrolling speed
         opacity: Math.random() * 0.5 + 0.3
@@ -587,8 +818,8 @@ document.addEventListener('DOMContentLoaded', () => {
     stars.forEach(star => {
       // Parallax scroll effect
       // Star position wraps around canvas size
-      let sy = (star.y - camY * star.parallax) % canvas.height;
-      if (sy < 0) sy += canvas.height;
+      let sy = (star.y - camY * star.parallax) % VIEW_HEIGHT;
+      if (sy < 0) sy += VIEW_HEIGHT;
       
       ctx.fillStyle = `rgba(255, 255, 255, ${star.opacity})`;
       ctx.beginPath();
@@ -603,14 +834,14 @@ document.addEventListener('DOMContentLoaded', () => {
     platforms = [];
     
     // Solid base platform to start
-    const basePlatform = new Platform(canvas.width / 2 - CONFIG.platformWidth / 2, canvas.height - 50, 'normal');
+    const basePlatform = new Platform(VIEW_WIDTH / 2 - CONFIG.platformWidth / 2, VIEW_HEIGHT - 50, 'normal');
     platforms.push(basePlatform);
     
     // Generate up the tower
-    let currentY = canvas.height - 120;
+    let currentY = VIEW_HEIGHT - 120;
+    let previous = basePlatform;
     while (currentY > -1000) {
-      spawnPlatformAtY(currentY);
-      // Random gap
+      previous = spawnPlatformAtY(currentY, previous);
       currentY -= getRandomGap(currentY);
     }
   }
@@ -623,8 +854,11 @@ document.addEventListener('DOMContentLoaded', () => {
     return Math.floor(Math.random() * (max - min) + min);
   }
 
-  function spawnPlatformAtY(y) {
-    const x = Math.random() * (canvas.width - CONFIG.platformWidth);
+  function spawnPlatformAtY(y, previous) {
+    const gap = previous ? previous.y - y : CONFIG.minPlatformGap;
+    const x = previous
+      ? TowerCore.getReachablePlatformX(previous, gap, CONFIG.platformWidth, VIEW_WIDTH)
+      : Math.random() * (VIEW_WIDTH - CONFIG.platformWidth);
     
     // Determine platform type based on current height
     const heightProgress = Math.min(Math.abs(y) / CONFIG.maxDifficultyHeight, 1);
@@ -647,29 +881,34 @@ document.addEventListener('DOMContentLoaded', () => {
       else if (roll < 0.68) type = 'fragile';
     }
 
-    platforms.push(new Platform(x, y, type));
+    const platform = new Platform(x, y, type);
+    platforms.push(platform);
+    return platform;
   }
 
   function maintainPlatforms() {
     // Generate new platforms ahead of camera
-    let highestPlatformY = canvas.height;
+    let highestPlatformY = VIEW_HEIGHT;
+    let highestPlatform = null;
     platforms.forEach(p => {
-      if (p.y < highestPlatformY) highestPlatformY = p.y;
+      if (p.y < highestPlatformY) {
+        highestPlatformY = p.y;
+        highestPlatform = p;
+      }
     });
 
     while (highestPlatformY > cameraY - 400) {
       highestPlatformY -= getRandomGap(highestPlatformY);
-      spawnPlatformAtY(highestPlatformY);
+      highestPlatform = spawnPlatformAtY(highestPlatformY, highestPlatform);
     }
 
     // Clean up old platforms too far below camera
-    platforms = platforms.filter(p => p.y < cameraY + canvas.height + 150);
+    platforms = platforms.filter(p => p.y < cameraY + VIEW_HEIGHT + 150);
   }
 
   // LocalStorage Leaderboard handling
   function getLeaderboard() {
-    const localData = localStorage.getItem('lava_tower_leaderboard');
-    return localData ? JSON.parse(localData) : [];
+    return TowerCore.parseLeaderboard(localStorage.getItem('lava_tower_leaderboard'));
   }
 
   function saveScore(scoreVal) {
@@ -748,12 +987,12 @@ document.addEventListener('DOMContentLoaded', () => {
       topColor = '#000000';
     }
 
-    const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, VIEW_HEIGHT);
     skyGrad.addColorStop(0, topColor);
     skyGrad.addColorStop(1, bottomColor);
     
     ctx.fillStyle = skyGrad;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
     ctx.restore();
   }
 
@@ -804,12 +1043,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Draw two overlapping wave layers for dynamic motion
     ctx.beginPath();
     ctx.moveTo(0, relativeLavaY);
-    for (let x = 0; x <= canvas.width; x += 10) {
+    for (let x = 0; x <= VIEW_WIDTH; x += 10) {
       const yOffset = Math.sin(x * 0.03 + gameTime * speed) * waveHeight;
       ctx.lineTo(x, relativeLavaY + yOffset);
     }
-    ctx.lineTo(canvas.width, canvas.height);
-    ctx.lineTo(0, canvas.height);
+    ctx.lineTo(VIEW_WIDTH, VIEW_HEIGHT);
+    ctx.lineTo(0, VIEW_HEIGHT);
     ctx.closePath();
     ctx.fill();
 
@@ -818,27 +1057,14 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.fillStyle = 'rgba(255, 110, 0, 0.4)';
     ctx.beginPath();
     ctx.moveTo(0, relativeLavaY + 5);
-    for (let x = 0; x <= canvas.width; x += 10) {
+    for (let x = 0; x <= VIEW_WIDTH; x += 10) {
       const yOffset = Math.cos(x * 0.02 + gameTime * (speed * 0.8)) * (waveHeight * 0.8);
       ctx.lineTo(x, relativeLavaY + 5 + yOffset);
     }
-    ctx.lineTo(canvas.width, canvas.height);
-    ctx.lineTo(0, canvas.height);
+    ctx.lineTo(VIEW_WIDTH, VIEW_HEIGHT);
+    ctx.lineTo(0, VIEW_HEIGHT);
     ctx.closePath();
     ctx.fill();
-
-    // Add rising lava sparks/bubbles
-    if (Math.random() < 0.2) {
-      particles.push(new Particle(
-        Math.random() * canvas.width,
-        lavaY - Math.random() * 10,
-        '#ffaa00',
-        Math.random() * 3 + 1,
-        (Math.random() - 0.5) * 1.5,
-        -Math.random() * 2 - 0.5,
-        Math.random() * 40 + 20
-      ));
-    }
 
     ctx.restore();
   }
@@ -854,139 +1080,114 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Main Playing/Tick Loop
-  function tick() {
+  function registerLanding(platformY) {
+    const climbed = player.jumpStartY - (platformY - player.height);
+    if (player.momentumJump && climbed >= 75) {
+      combo++;
+      bestCombo = Math.max(bestCombo, combo);
+      comboMessageTime = 90;
+      gameStatus.textContent = `High jump combo ${combo}`;
+      spawnExplosion(player.x + player.width / 2, player.y + player.height, '#ffd700', 5 + combo, 2);
+    } else if (combo > 0) {
+      combo = 0;
+      comboMessageTime = 45;
+      gameStatus.textContent = 'Combo ended';
+    }
+    player.momentumJump = false;
+    player.jumpAnimation = 'none';
+    player.jumpRotation = 0;
+  }
+
+  function updateGame() {
     gameTime++;
+    player.update();
+    player.grounded = false;
 
-    // Clear Canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (player.y < cameraY + VIEW_HEIGHT * 0.45) {
+      targetCameraY = player.y - VIEW_HEIGHT * 0.45;
+    }
+    if (jumpBufferFrames > 0) jumpBufferFrames--;
+    if (comboMessageTime > 0) comboMessageTime--;
+    cameraY += (targetCameraY - cameraY) * 0.12;
 
+    lavaSpeed = Math.min(lavaSpeed + CONFIG.lavaAcceleration, CONFIG.maxLavaSpeed);
+    const difficultyMultiplier = 1 + (Math.abs(player.y) / CONFIG.maxDifficultyHeight) * 0.7;
+    lavaY -= Math.min(lavaSpeed * difficultyMultiplier, CONFIG.maxLavaSpeed);
+    const viewportBottom = cameraY + VIEW_HEIGHT;
+    lavaY = Math.min(lavaY, viewportBottom + 120);
+
+    currentScore = Math.max(currentScore, Math.floor(Math.max(0, (VIEW_HEIGHT - 100) - player.y) / 10));
+    maintainPlatforms();
+
+    if (player.vy > 0) {
+      for (const plat of platforms) {
+        if (plat.broken) continue;
+        const crossedTop = player.y + player.height >= plat.y &&
+          player.y + player.height - player.vy <= plat.y + 12;
+        const overlaps = player.x + player.width > plat.x && player.x < plat.x + plat.width;
+        if (!crossedTop || !overlaps) continue;
+
+        const hitSpring = plat.hasSpring &&
+          player.x + player.width > plat.springX &&
+          player.x < plat.springX + CONFIG.springWidth &&
+          player.y + player.height - player.vy <= plat.springY + CONFIG.springHeight;
+        player.y = plat.y - player.height;
+        registerLanding(plat.y);
+
+        if (hitSpring) {
+          plat.springActivated = true;
+          plat.springFrame = 0;
+          screenShake = 8;
+          player.jump(CONFIG.springJumpForce);
+          spawnExplosion(plat.springX + CONFIG.springWidth / 2, plat.springY, '#ff3366', 8, 3);
+        } else {
+          player.vy = 0;
+          player.grounded = true;
+          player.tryBufferedJump();
+          if (plat.type === 'fragile') plat.broken = true;
+        }
+        break;
+      }
+    }
+
+    platforms = platforms.filter(platform => platform.update());
+    particles = particles.filter(particle => {
+      particle.update();
+      return particle.life > 0;
+    });
+    if (Math.random() < 0.2) {
+      particles.push(new Particle(Math.random() * VIEW_WIDTH, lavaY - Math.random() * 10, '#ffaa00', Math.random() * 3 + 1, (Math.random() - 0.5) * 1.5, -Math.random() * 2 - 0.5, Math.random() * 40 + 20));
+    }
+
+    if (player.y + player.height >= lavaY || player.y - cameraY > VIEW_HEIGHT + 100) gameOver();
+  }
+
+  function renderGame() {
+    ctx.clearRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
     ctx.save();
     applyScreenShake();
-
-    // 1. Draw Background Sky & Parallax Starfield
     drawSkyGradient(ctx, cameraY);
     updateAndDrawStars(ctx, cameraY);
-
-    if (gameState === 'playing') {
-      // 2. Physics & Logic Updates
-      player.update();
-
-      // Scroll camera smoothly to follow player
-      if (player.y < cameraY + canvas.height * 0.45) {
-        targetCameraY = player.y - canvas.height * 0.45;
-      }
-      
-      // Let camera scroll up smoothly
-      cameraY += (targetCameraY - cameraY) * 0.12;
-
-      // Handle Lava rising
-      // Lava creeps faster the longer the run lasts...
-      lavaSpeed = Math.min(lavaSpeed + CONFIG.lavaAcceleration, CONFIG.maxLavaSpeed);
-      // ...and faster the higher the player climbs.
-      const difficultyMultiplier = 1 + (Math.abs(player.y) / CONFIG.maxDifficultyHeight) * 0.7;
-      const currentFrameLavaSpeed = Math.min(lavaSpeed * difficultyMultiplier, CONFIG.maxLavaSpeed);
-      
-      lavaY -= currentFrameLavaSpeed;
-
-      // Make sure the lava doesn't fall too far behind the viewport bottom to keep urgency
-      const maxLavaDistanceBelowViewport = 120;
-      const viewportBottom = cameraY + canvas.height;
-      if (lavaY > viewportBottom + maxLavaDistanceBelowViewport) {
-        lavaY = viewportBottom + maxLavaDistanceBelowViewport;
-      }
-
-      // Calculate score based on height climbed (10px = 1m)
-      const heightInPixels = Math.max(0, (canvas.height - 100) - player.y);
-      const calculatedScore = Math.floor(heightInPixels / 10);
-      if (calculatedScore > currentScore) {
-        currentScore = calculatedScore;
-      }
-
-      // Maintain and clean platforms
-      maintainPlatforms();
-
-      // 3. Collision Checks
-      
-      // Check collision with platform landing from above
-      if (player.vy > 0) { // only land when falling
-        for (const plat of platforms) {
-          // Already-crumbling platforms are no longer solid
-          if (plat.broken) continue;
-
-          // AABB collision logic for landing (swept against the platform top)
-          if (
-            player.x + player.width > plat.x &&
-            player.x < plat.x + plat.width &&
-            player.y + player.height >= plat.y &&
-            player.y + player.height - player.vy <= plat.y + 12
-          ) {
-            // Did the player come down on the spring's narrow pad?
-            let hitSpring = false;
-            if (plat.hasSpring) {
-              const sx = plat.springX;
-              const sy = plat.springY;
-              hitSpring =
-                player.x + player.width > sx &&
-                player.x < sx + CONFIG.springWidth &&
-                player.y + player.height >= sy &&
-                player.y + player.height - player.vy <= sy + CONFIG.springHeight;
-            }
-
-            if (hitSpring) {
-              // Spring-activated super jump
-              const sx = plat.springX;
-              const sy = plat.springY;
-              player.vy = CONFIG.springJumpForce;
-              plat.springActivated = true;
-              plat.springFrame = 0;
-              screenShake = 8;
-              sound.play('spring');
-              spawnExplosion(sx + CONFIG.springWidth / 2, sy, '#ff3366', 15, 4);
-            } else {
-              // Normal bounce off the platform body
-              player.vy = CONFIG.jumpForce;
-              sound.play('jump');
-              spawnExplosion(player.x + player.width / 2, player.y + player.height, '#00b4db', 6, 1.5);
-              // Fragile platforms start crumbling after one bounce
-              if (plat.type === 'fragile') plat.broken = true;
-            }
-
-            break; // one landing per frame
-          }
-        }
-      }
-
-      // Check gameover collision (Lava touch or falling way below camera)
-      if (player.y + player.height >= lavaY || player.y - cameraY > canvas.height + 100) {
-        gameOver();
-      }
-    }
-
-    // Update and draw platforms
-    platforms = platforms.filter(p => p.update());
-    platforms.forEach(p => p.draw(ctx, cameraY));
-
-    // Update and draw particles
-    particles = particles.filter(part => {
-      part.update();
-      part.draw(ctx, cameraY);
-      return part.life > 0;
-    });
-
-    // Draw Lava
+    platforms.forEach(platform => platform.draw(ctx, cameraY));
+    particles.forEach(particle => particle.draw(ctx, cameraY));
     drawLava(ctx, cameraY);
-
-    // Draw Player
-    if (gameState === 'playing' && player) {
-      player.draw(ctx, cameraY);
-    }
-
+    if (player) player.draw(ctx, cameraY);
     ctx.restore();
+    drawHUD();
+  }
 
-    // HUD overlays
+  // Fixed-step simulation keeps gameplay identical across display refresh rates.
+  function tick(timestamp) {
+    if (gameState !== 'playing') return;
+    if (!lastTimestamp) lastTimestamp = timestamp;
+    accumulator += Math.min(timestamp - lastTimestamp, 100);
+    lastTimestamp = timestamp;
+    while (accumulator >= FIXED_STEP_MS && gameState === 'playing') {
+      updateGame();
+      accumulator -= FIXED_STEP_MS;
+    }
     if (gameState === 'playing') {
-      drawHUD();
+      renderGame();
       animationFrameId = requestAnimationFrame(tick);
     }
   }
@@ -1001,6 +1202,14 @@ document.addEventListener('DOMContentLoaded', () => {
     ctx.shadowBlur = 5;
     ctx.shadowColor = 'rgba(0,0,0,0.5)';
     ctx.fillText(`${currentScore} m`, 20, 35);
+
+    if (combo > 0 || comboMessageTime > 0) {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = combo > 0 ? '#ffd700' : 'rgba(255,255,255,0.55)';
+      ctx.font = "800 18px 'Outfit'";
+      ctx.fillText(combo > 0 ? `HIGH JUMP x${combo}` : 'COMBO ENDED', VIEW_WIDTH / 2, 70);
+      ctx.textAlign = 'left';
+    }
     
     // Warning if lava is close
     const distToLava = lavaY - (player.y + player.height);
@@ -1013,7 +1222,7 @@ document.addEventListener('DOMContentLoaded', () => {
       // Red vignette borders showing danger
       ctx.strokeStyle = `rgba(255, 78, 0, ${dangerLevel * 0.6})`;
       ctx.lineWidth = 10;
-      ctx.strokeRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
     }
     
     ctx.restore();
@@ -1029,10 +1238,52 @@ document.addEventListener('DOMContentLoaded', () => {
     const isNewRecord = saveScore(currentScore);
     
     finalScoreSpan.textContent = currentScore;
-    bestTag.textContent = isNewRecord ? "🏆 NEW PERSONAL BEST!" : "";
+    bestTag.textContent = isNewRecord ? 'NEW PERSONAL BEST!' : (bestCombo > 1 ? `Best combo: x${bestCombo}` : '');
+    if (isNewRecord) sound.play('highscore');
     
     // Show GameOver overlay
     gameoverOverlay.classList.remove('hidden');
+    pauseButton.classList.add('hidden');
+    refreshTouchControlsUI();
+  }
+
+  function pauseGame() {
+    if (gameState !== 'playing') return;
+    gameState = 'paused';
+    resetInput();
+    cancelAnimationFrame(animationFrameId);
+    pauseOverlay.classList.remove('hidden');
+    pauseButton.classList.add('hidden');
+    refreshTouchControlsUI();
+    gameStatus.textContent = 'Game paused';
+  }
+
+  function resumeGame() {
+    if (gameState !== 'paused') return;
+    gameState = 'playing';
+    lastTimestamp = 0;
+    accumulator = 0;
+    pauseOverlay.classList.add('hidden');
+    pauseButton.classList.remove('hidden');
+    refreshTouchControlsUI();
+    animationFrameId = requestAnimationFrame(tick);
+    gameStatus.textContent = 'Game resumed';
+  }
+
+  function showMenu() {
+    gameState = 'menu';
+    menuOverlay.classList.remove('hidden');
+    gameoverOverlay.classList.add('hidden');
+    leaderboardOverlay.classList.add('hidden');
+    pauseOverlay.classList.add('hidden');
+    pauseButton.classList.add('hidden');
+    refreshTouchControlsUI();
+    initStars();
+    cameraY = 0;
+    lavaY = VIEW_HEIGHT + 40;
+    generateInitialPlatforms();
+    cancelAnimationFrame(animationFrameId);
+    animationFrameId = requestAnimationFrame(menuTick);
   }
 
   // Start a fresh new round
@@ -1042,13 +1293,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
     gameState = 'playing';
     currentScore = 0;
+    combo = 0;
+    bestCombo = 0;
+    comboMessageTime = 0;
     cameraY = 0;
     targetCameraY = 0;
-    lavaY = canvas.height + 150;
+    lavaY = VIEW_HEIGHT + 150;
     lavaSpeed = CONFIG.baseLavaSpeed;
     keys = {};
     touchInput.left = false;
     touchInput.right = false;
+    touchInput.graceDirection = 0;
+    touchInput.graceFrames = 0;
+    jumpBufferFrames = 0;
+    lastTimestamp = 0;
+    accumulator = 0;
 
     // Reset components
     player = new Player();
@@ -1060,6 +1319,9 @@ document.addEventListener('DOMContentLoaded', () => {
     menuOverlay.classList.add('hidden');
     gameoverOverlay.classList.add('hidden');
     leaderboardOverlay.classList.add('hidden');
+    pauseOverlay.classList.add('hidden');
+    pauseButton.classList.remove('hidden');
+    refreshTouchControlsUI();
 
     cancelAnimationFrame(animationFrameId);
     animationFrameId = requestAnimationFrame(tick);
@@ -1075,41 +1337,30 @@ document.addEventListener('DOMContentLoaded', () => {
     populateLeaderboardUI();
     leaderboardOverlay.classList.remove('hidden');
     menuOverlay.classList.add('hidden');
+    refreshTouchControlsUI();
   });
 
   btnBack.addEventListener('click', () => {
     gameState = 'menu';
     menuOverlay.classList.remove('hidden');
     leaderboardOverlay.classList.add('hidden');
+    refreshTouchControlsUI();
   });
 
   btnRetry.addEventListener('click', () => {
     startNewGame();
   });
 
-  btnMenuElements.forEach(btn => {
-    btn.addEventListener('click', () => {
-      gameState = 'menu';
-      menuOverlay.classList.remove('hidden');
-      gameoverOverlay.classList.add('hidden');
-      leaderboardOverlay.classList.add('hidden');
-      
-      // Set background canvas display showing stars/lava inactive
-      initStars();
-      cameraY = 0;
-      lavaY = canvas.height + 40;
-      generateInitialPlatforms();
-      
-      // Run static animation loop for main menu visual
-      cancelAnimationFrame(animationFrameId);
-      animationFrameId = requestAnimationFrame(menuTick);
-    });
-  });
+  pauseButton.addEventListener('click', pauseGame);
+  resumeButton.addEventListener('click', resumeGame);
+  pauseMenuButton.addEventListener('click', showMenu);
+
+  menuButton.addEventListener('click', showMenu);
 
   // Main menu backdrop animation tick
   function menuTick() {
     gameTime++;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, VIEW_WIDTH, VIEW_HEIGHT);
     
     // Render static scrolling starfield and waves
     drawSkyGradient(ctx, 0);
@@ -1127,9 +1378,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Bootstrap Main Menu visual background
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
   initStars();
   cameraY = 0;
-  lavaY = canvas.height + 50;
+  lavaY = VIEW_HEIGHT + 50;
   generateInitialPlatforms();
+  refreshTouchControlsUI();
+  refreshSoundUI();
   animationFrameId = requestAnimationFrame(menuTick);
 });

@@ -19,16 +19,24 @@
   padding: 0;
 }
 
+html, body {
+  overscroll-behavior: none;
+}
+
 body {
   background-color: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-main);
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   position: relative;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+           env(safe-area-inset-bottom) env(safe-area-inset-left);
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Background animated lava glow effect */
@@ -52,19 +60,29 @@ body::before {
 
 #game-wrap {
   position: relative;
-  width: 420px;
-  height: 640px;
+  /* Scale to fit the viewport while preserving the 420:640 aspect ratio.
+     Capped at the native size, so desktop is unchanged. Both dimensions are
+     derived from the same constraints to avoid distortion. */
+  width: min(420px, 100vw, calc(100dvh * 420 / 640));
+  height: min(640px, 100dvh, calc(100vw * 640 / 420));
   border-radius: 20px;
   overflow: hidden;
   box-shadow: var(--glow-shadow);
   border: 1px solid var(--color-border);
   background-color: #0b0707;
   transition: box-shadow 0.3s ease, border-color 0.3s ease;
+  /* Establish a size container so overlay UI can scale with the game box. */
+  container-type: size;
+  container-name: game;
+  touch-action: none;
 }
 
-#game-wrap:hover {
-  box-shadow: var(--glow-shadow-strong);
-  border-color: rgba(255, 78, 0, 0.4);
+/* Only apply hover affordances on devices that can actually hover (not touch). */
+@media (hover: hover) {
+  #game-wrap:hover {
+    box-shadow: var(--glow-shadow-strong);
+    border-color: rgba(255, 78, 0, 0.4);
+  }
 }
 
 canvas {
@@ -72,6 +90,7 @@ canvas {
   width: 100%;
   height: 100%;
   background: linear-gradient(to bottom, #0d0c1d 0%, #1a0b07 70%, #2b0700 100%);
+  touch-action: none;
 }
 
 /* Overlay Base Styles (Glassmorphism) */
@@ -88,7 +107,7 @@ canvas {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 30px;
+  padding: clamp(16px, 7cqmin, 30px);
   text-align: center;
   z-index: 10;
   opacity: 1;
@@ -107,7 +126,7 @@ canvas {
 
 /* Header Styles */
 h1 {
-  font-size: 3.5rem;
+  font-size: clamp(2.2rem, 14cqmin, 3.5rem);
   font-weight: 800;
   letter-spacing: 2px;
   color: #fff;
@@ -120,14 +139,14 @@ h1 {
 
 h1 span {
   display: block;
-  font-size: 2.2rem;
+  font-size: clamp(1.4rem, 9cqmin, 2.2rem);
   color: var(--color-secondary);
   text-shadow: 0 0 10px rgba(255, 255, 255, 0.1),
                0 0 20px var(--color-secondary);
 }
 
 h2 {
-  font-size: 2.2rem;
+  font-size: clamp(1.5rem, 9cqmin, 2.2rem);
   font-weight: 800;
   color: #fff;
   text-shadow: 0 0 15px var(--color-primary);
@@ -137,27 +156,27 @@ h2 {
 
 /* Taglines & Text */
 .tagline {
-  font-size: 1rem;
+  font-size: clamp(0.85rem, 4cqmin, 1rem);
   color: #a0a0ab;
-  margin-bottom: 40px;
+  margin-bottom: clamp(20px, 9cqmin, 40px);
   font-weight: 400;
 }
 
 .hint {
-  font-size: 0.85rem;
+  font-size: clamp(0.75rem, 3.4cqmin, 0.85rem);
   color: #71717a;
-  margin-top: 25px;
+  margin-top: clamp(14px, 6cqmin, 25px);
   letter-spacing: 0.5px;
 }
 
 .final {
-  font-size: 1.5rem;
+  font-size: clamp(1.2rem, 6cqmin, 1.5rem);
   color: #a0a0ab;
   margin-bottom: 10px;
 }
 
 #final-score {
-  font-size: 2.5rem;
+  font-size: clamp(2rem, 11cqmin, 2.5rem);
   font-weight: 800;
   color: var(--color-secondary);
   text-shadow: 0 0 15px rgba(236, 159, 5, 0.4);
@@ -177,30 +196,50 @@ button {
   background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
   color: #fff;
   border: none;
-  padding: 14px 28px;
-  font-size: 1.1rem;
+  padding: clamp(11px, 3.5cqmin, 14px) 28px;
+  font-size: clamp(1rem, 4.6cqmin, 1.1rem);
   font-weight: 600;
   border-radius: 30px;
   cursor: pointer;
-  width: 220px;
-  margin: 10px 0;
+  width: min(220px, 64cqmin);
+  margin: clamp(6px, 2.5cqmin, 10px) 0;
   box-shadow: 0 4px 15px rgba(255, 78, 0, 0.3);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   letter-spacing: 0.5px;
   display: flex;
   align-items: center;
   justify-content: center;
+  touch-action: manipulation;
 }
 
-button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(255, 78, 0, 0.5), 0 0 10px rgba(255, 255, 255, 0.2);
-  filter: brightness(1.1);
+@media (hover: hover) {
+  button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(255, 78, 0, 0.5), 0 0 10px rgba(255, 255, 255, 0.2);
+    filter: brightness(1.1);
+  }
 }
 
 button:active {
   transform: translateY(1px);
   box-shadow: 0 2px 10px rgba(255, 78, 0, 0.3);
+}
+
+button:focus-visible {
+  outline: 3px solid #fff;
+  outline-offset: 3px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Leaderboard List styling */
@@ -267,4 +306,171 @@ button:active {
 
 #no-scores {
   margin-bottom: 30px;
+}
+
+.controls-toggle {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  z-index: 9;
+  width: auto;
+  min-width: 92px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(15, 10, 10, 0.42);
+  color: rgba(255, 255, 255, 0.82);
+  box-shadow: none;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  font-size: 0.72rem;
+  line-height: 1;
+  letter-spacing: 0;
+  touch-action: manipulation;
+}
+
+.hud-button {
+  position: absolute;
+  z-index: 9;
+  width: auto;
+  min-width: 76px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  background: rgba(15, 10, 10, 0.52);
+  color: rgba(255, 255, 255, 0.88);
+  box-shadow: none;
+  backdrop-filter: blur(6px);
+  font-size: 0.72rem;
+}
+
+.mute-toggle {
+  z-index: 11;
+  right: max(10px, env(safe-area-inset-right));
+  bottom: max(10px, env(safe-area-inset-bottom));
+}
+
+.pause-toggle {
+  top: max(10px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.hud-button.hidden {
+  display: none;
+}
+
+.touch-controls {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  user-select: none;
+}
+
+.touch-controls.hidden,
+.controls-toggle.hidden {
+  display: none;
+}
+
+.movement-zone,
+.jump-button {
+  pointer-events: auto;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.movement-zone {
+  position: absolute;
+  inset: 0 42% 0 0;
+  touch-action: none;
+}
+
+.thumbpad {
+  --pad-x: 50%;
+  --pad-y: 75%;
+  display: none;
+  position: absolute;
+  left: var(--pad-x);
+  top: var(--pad-y);
+  width: clamp(88px, 25cqmin, 118px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.24);
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
+  box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.08), 0 0 18px rgba(0, 0, 0, 0.25);
+  opacity: 0.56;
+  touch-action: none;
+}
+
+.thumbpad.tracking {
+  display: block;
+}
+
+.thumbpad::before,
+.thumbpad::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 20%;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.thumbpad::before {
+  left: 16%;
+}
+
+.thumbpad::after {
+  right: 16%;
+}
+
+.thumbstick {
+  --stick-x: 0px;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 38%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  transform: translate(calc(-50% + var(--stick-x)), -50%);
+  transition: transform 0.08s ease-out;
+}
+
+.jump-button {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  width: clamp(82px, 23cqmin, 106px);
+  aspect-ratio: 1;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.24);
+  background: radial-gradient(circle at 35% 30%, rgba(255, 196, 107, 0.58), rgba(255, 78, 0, 0.28));
+  box-shadow: 0 0 18px rgba(255, 78, 0, 0.22);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: clamp(0.82rem, 3.7cqmin, 1rem);
+  font-weight: 800;
+  letter-spacing: 0;
+  opacity: 0.62;
+}
+
+.jump-button:active,
+.thumbpad.active {
+  opacity: 0.9;
+  filter: brightness(1.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
