@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Lava Tower — Jump Forever</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -10,13 +10,28 @@
   <div id="game-wrap">
     <canvas id="game" width="420" height="640"></canvas>
 
+    <button id="btn-controls-toggle" class="controls-toggle hidden" type="button" aria-pressed="true">
+      Controls On
+    </button>
+    <button id="btn-mute" class="hud-button mute-toggle" type="button" aria-pressed="false">Sound On</button>
+    <button id="btn-pause" class="hud-button pause-toggle hidden" type="button">Pause</button>
+
+    <div id="touch-controls" class="touch-controls hidden" aria-hidden="false">
+      <div id="movement-zone" class="movement-zone" role="application" aria-label="Touch left side and drag to move">
+        <div id="thumbpad" class="thumbpad">
+          <div id="thumbstick" class="thumbstick"></div>
+        </div>
+      </div>
+      <div id="jump-zone" class="jump-zone" role="button" aria-label="Tap right side to jump"></div>
+    </div>
+
     <!-- Start Menu -->
     <div id="menu" class="overlay">
       <h1>LAVA<span>TOWER</span></h1>
       <p class="tagline">Climb forever. Outrun the lava.</p>
       <button id="btn-new">New Game</button>
       <button id="btn-leaderboard">Leaderboard</button>
-      <p class="hint">← → or A / D to move</p>
+      <p class="hint">Mobile: drag left side, tap right side · Desktop: arrows + Space</p>
     </div>
 
     <!-- Leaderboard -->
@@ -35,7 +50,17 @@
       <button id="btn-retry">Play Again</button>
       <button id="btn-menu">Main Menu</button>
     </div>
+
+    <div id="pause" class="overlay hidden">
+      <h2>Paused</h2>
+      <p class="tagline">Your run is waiting.</p>
+      <button id="btn-resume">Resume</button>
+      <button id="btn-pause-menu">Main Menu</button>
+    </div>
+
+    <div id="game-status" class="sr-only" aria-live="polite"></div>
   </div>
-  <script src="game.js?v=3"></script>
+  <script src="game-core.js?v=1"></script>
+  <script src="game.js?v=11"></script>
 </body>
 </html>
