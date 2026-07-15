@@ -46,7 +46,7 @@ document.addEventListener('DOMContentLoaded', () => {
     groundAcceleration: 0.62,
     airAcceleration: 0.34,
     groundFriction: 0.65,
-    airFriction: 0.98,
+    airFriction: 0.90,
     maxPlayerVx: 7.2,
     momentumThreshold: 4.2,
     momentumJumpForce: -15.5,
