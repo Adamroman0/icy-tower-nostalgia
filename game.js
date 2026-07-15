@@ -45,8 +45,8 @@ document.addEventListener('DOMContentLoaded', () => {
     maxFallSpeed: 14, // terminal velocity — keeps fast descents readable
     groundAcceleration: 0.62,
     airAcceleration: 0.34,
-    groundFriction: 0.82,
-    airFriction: 0.992,
+    groundFriction: 0.72,
+    airFriction: 0.985,
     maxPlayerVx: 7.2,
     momentumThreshold: 4.2,
     momentumJumpForce: -15.5,
@@ -118,63 +118,119 @@ document.addEventListener('DOMContentLoaded', () => {
       gain.connect(this.ctx.destination);
       
       if (type === 'jump') {
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(150, now);
-        osc.frequency.exponentialRampToValueAtTime(450, now + 0.12);
-        gain.gain.setValueAtTime(0.2, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-        osc.start(now);
-        osc.stop(now + 0.15);
-      } else if (type === 'spring') {
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(200, now);
-        osc.frequency.exponentialRampToValueAtTime(900, now + 0.3);
-        gain.gain.setValueAtTime(0.25, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
-        osc.start(now);
-        osc.stop(now + 0.35);
-      } else if (type === 'break') {
+        // 90s punk/grunge: distorted guitar-like crunch
         osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(120, now);
-        osc.frequency.linearRampToValueAtTime(40, now + 0.25);
+        osc.frequency.setValueAtTime(80, now);
+        osc.frequency.exponentialRampToValueAtTime(180, now + 0.08);
         
-        // Add lowpass filter for crumply sound
-        const filter = this.ctx.createBiquadFilter();
-        filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(300, now);
+        // Add distortion via waveshaper
+        const waveshaper = this.ctx.createWaveShaper();
+        waveshaper.curve = new Float32Array(256).map((_, i) => {
+          const x = (i - 128) / 128;
+          return Math.tanh(x * 8); // heavy distortion
+        });
         
         osc.disconnect(gain);
-        osc.connect(filter);
-        filter.connect(gain);
+        osc.connect(waveshaper);
+        waveshaper.connect(gain);
         
-        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.setValueAtTime(0.35, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+        osc.start(now);
+        osc.stop(now + 0.18);
+      } else if (type === 'spring') {
+        // 90s punk: aggressive power chord stab
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(110, now); // A2
+        osc.frequency.exponentialRampToValueAtTime(220, now + 0.15);
+        
+        const distortion = this.ctx.createWaveShaper();
+        distortion.curve = new Float32Array(256).map((_, i) => {
+          const x = (i - 128) / 128;
+          return Math.tanh(x * 12);
+        });
+        
+        osc.disconnect(gain);
+        osc.connect(distortion);
+        distortion.connect(gain);
+        
+        gain.gain.setValueAtTime(0.4, now);
         gain.gain.exponentialRampToValueAtTime(0.01, now + 0.25);
         osc.start(now);
         osc.stop(now + 0.25);
-      } else if (type === 'gameover') {
+      } else if (type === 'break') {
+        // 90s grunge: feedback noise burst
         osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(300, now);
-        osc.frequency.exponentialRampToValueAtTime(80, now + 0.6);
-        gain.gain.setValueAtTime(0.3, now);
-        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.65);
+        osc.frequency.setValueAtTime(60, now);
+        osc.frequency.exponentialRampToValueAtTime(20, now + 0.3);
+        
+        const distortion = this.ctx.createWaveShaper();
+        distortion.curve = new Float32Array(256).map((_, i) => {
+          const x = (i - 128) / 128;
+          return Math.tanh(x * 15);
+        });
+        
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(400, now);
+        filter.frequency.linearRampToValueAtTime(100, now + 0.3);
+        
+        osc.disconnect(gain);
+        osc.connect(distortion);
+        distortion.connect(filter);
+        filter.connect(gain);
+        
+        gain.gain.setValueAtTime(0.45, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
         osc.start(now);
-        osc.stop(now + 0.65);
-      } else if (type === 'highscore') {
-        // Play a nice arpeggio
-        const notes = [261.63, 329.63, 392.00, 523.25]; // C major
+        osc.stop(now + 0.3);
+      } else if (type === 'gameover') {
+        // 90s punk: descending power chord doom
+        const notes = [110, 82.41, 65.41]; // A2, E2, C2
         notes.forEach((freq, idx) => {
           const noteOsc = this.ctx.createOscillator();
           const noteGain = this.ctx.createGain();
-          noteOsc.connect(noteGain);
+          const dist = this.ctx.createWaveShaper();
+          dist.curve = new Float32Array(256).map((_, i) => {
+            const x = (i - 128) / 128;
+            return Math.tanh(x * 10);
+          });
+          
+          noteOsc.connect(dist);
+          dist.connect(noteGain);
           noteGain.connect(this.ctx.destination);
           
-          noteOsc.type = 'sine';
-          noteOsc.frequency.setValueAtTime(freq, now + idx * 0.1);
-          noteGain.gain.setValueAtTime(0.15, now + idx * 0.1);
-          noteGain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.1 + 0.25);
+          noteOsc.type = 'sawtooth';
+          noteOsc.frequency.setValueAtTime(freq, now + idx * 0.15);
+          noteGain.gain.setValueAtTime(0.35, now + idx * 0.15);
+          noteGain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.15 + 0.4);
           
-          noteOsc.start(now + idx * 0.1);
-          noteOsc.stop(now + idx * 0.1 + 0.25);
+          noteOsc.start(now + idx * 0.15);
+          noteOsc.stop(now + idx * 0.15 + 0.4);
+        });
+      } else if (type === 'highscore') {
+        // 90s punk: triumphant but gritty
+        const notes = [110, 146.83, 196, 220]; // A2, D3, G3, A3 (power chord)
+        notes.forEach((freq, idx) => {
+          const noteOsc = this.ctx.createOscillator();
+          const noteGain = this.ctx.createGain();
+          const dist = this.ctx.createWaveShaper();
+          dist.curve = new Float32Array(256).map((_, i) => {
+            const x = (i - 128) / 128;
+            return Math.tanh(x * 8);
+          });
+          
+          noteOsc.connect(dist);
+          dist.connect(noteGain);
+          noteGain.connect(this.ctx.destination);
+          
+          noteOsc.type = 'square';
+          noteOsc.frequency.setValueAtTime(freq, now + idx * 0.08);
+          noteGain.gain.setValueAtTime(0.3, now + idx * 0.08);
+          noteGain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.08 + 0.3);
+          
+          noteOsc.start(now + idx * 0.08);
+          noteOsc.stop(now + idx * 0.08 + 0.3);
         });
       }
     }
@@ -876,15 +932,13 @@ document.addEventListener('DOMContentLoaded', () => {
       // Basic platforms
       if (roll < 0.15) type = 'moving';
     } else if (heightProgress < 0.5) {
-      // Mix in spring and a few crumbling platforms
+      // Mix in spring platforms
       if (roll < 0.2) type = 'moving';
-      else if (roll < 0.33) type = 'spring';
-      else if (roll < 0.43) type = 'fragile';
+      else if (roll < 0.35) type = 'spring';
     } else {
-      // Advanced levels (fewer normal platforms, more hazards)
+      // Advanced levels (more springs and moving)
       if (roll < 0.32) type = 'moving';
-      else if (roll < 0.5) type = 'spring';
-      else if (roll < 0.68) type = 'fragile';
+      else if (roll < 0.55) type = 'spring';
     }
 
     const platform = new Platform(x, y, type);
@@ -1134,7 +1188,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (player.vy > 0) {
       for (const plat of platforms) {
-        if (plat.broken) continue;
         const crossedTop = player.y + player.height >= plat.y &&
           player.y + player.height - player.vy <= plat.y + 12;
         const overlaps = player.x + player.width > plat.x && player.x < plat.x + plat.width;
@@ -1157,7 +1210,6 @@ document.addEventListener('DOMContentLoaded', () => {
           player.vy = 0;
           player.grounded = true;
           player.tryBufferedJump();
-          if (plat.type === 'fragile') plat.broken = true;
         }
         break;
       }
